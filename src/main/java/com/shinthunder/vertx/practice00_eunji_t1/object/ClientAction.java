@@ -9,6 +9,15 @@ public class ClientAction implements Serializable {
     private int userId;
     private String nickName;
     private int direction;
+    private int roomNumber;
+
+    public int getRoomNumber() {
+        return roomNumber;
+    }
+
+    public void setRoomNumber(int roomNumber) {
+        this.roomNumber = roomNumber;
+    }
 
     public int getDirection() {
         return direction;

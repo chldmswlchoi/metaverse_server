@@ -7,7 +7,6 @@ import com.shinthunder.vertx.practice00_eunji_t1.object.ClientAction;
 import io.vertx.core.*;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.ServerWebSocket;
-import io.vertx.core.http.WebSocket;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -21,7 +20,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class ChatServer extends AbstractVerticle {
     // -------------------------- CONSTANTS --------------------------
@@ -48,121 +46,76 @@ public class ChatServer extends AbstractVerticle {
     // 비동기 맵 인터페이스 Key : 사용자 id , Value : 소켓 주소
     // 서로 다른 Verticle이나 노드에서도 동일한 데이터에 접근이 가능
     private AsyncMap<Integer, String> userToSocketMap;  // <userId, socketAddress>
-
-
     private AsyncMap<Integer, JsonObject> userLocationMap; // <userId, locationData>
+    private AsyncMap<Integer, Set<Integer>> roomToUsersMap;  // roonNum to set of userIDs
+
     // -------------------------- WEBSOCKET HANDLER METHODS --------------------------
     private void handleClientAction(ServerWebSocket socket, ClientAction clientAction) {
-        logger.info("handleClientAction");
-
+        logger.info("!!!!!!!!!!!!!!!!!!!!!!!! handleClientAction!!!!!!!!!!!!!!!!!!!!");
+//        Buffer buffer = Json.encodeToBuffer(clientAction);
 
         switch (clientAction.getAction()) {
-
             case "MOVE":
-                Buffer buffer = Json.encodeToBuffer(clientAction);
-                clients.forEach(clientSocket -> {
+
                     try {
                         int userId = clientAction.getUserId();
                         int x = clientAction.getX();
                         int y = clientAction.getY();
                         int direction = clientAction.getDirection();
+                        int roomNum = clientAction.getRoomNumber();
 
-                        JsonObject data = new JsonObject();
-                        data.put("action","MOVE");
-                        data.put("direction",direction);
-                        data.put("userId",userId);
-                        data.put("x",x);
-                        data.put("y",y);
-                        clientSocket.writeTextMessage(data.toString());
-                        logger.info("위치 값 보냄 ", buffer.toString());
-
+                        JsonObject moveData = new JsonObject();
+                        moveData.put("action","MOVE");
+                        moveData.put("direction",direction);
+                        moveData.put("userId",userId);
+                        moveData.put("x",x);
+                        moveData.put("y",y);
+                        moveData.put("roomNumber",roomNum);
+                        sendMessageToRoomUsers(roomNum, moveData);
                         changeUserLocationMapData(userId,x,y,direction);
 
                     } catch (Exception e) {
-                        logger.error("Failed to send message to client {}: {}", clientSocket.remoteAddress().host(), e.getMessage());
+                        logger.error("Failed to handle MOVE message to client");
                     }
-                });
+
                 break;
 
-            case "SAVE_USER_INFO":
-                logger.info(" name : {}, SAVE_USER_INFO !! ", clientAction.getUserId());
+            case "ENTER_ROOM":
+                logger.info(" name : {}, ENTER_ROOM !! ", clientAction.getUserId());
                 userToSocketMap.put(clientAction.getUserId(), socket.remoteAddress().toString());
+                addNewUserToRoomToUserMap(clientAction.getRoomNumber(),clientAction.getUserId());
 
-                // 기존 유저들에게 새로운 유저가 들어왔다고 알림
-                clients.forEach(clientSocket -> {
-                    try {
-                        JsonObject data = new JsonObject();
-                        data.put("action","SAVE_USER_INFO");
-                        data.put("userId",clientAction.getUserId());
-                        data.put("nickName",clientAction.getNickName());
-                        clientSocket.writeTextMessage(data.toString());
-                        logger.info("SAVE_USER_INFO");
+                JsonObject data = new JsonObject();
+                data.put("action","SAVE_USER_INFO");
+                data.put("userId",clientAction.getUserId());
+                data.put("nickName",clientAction.getNickName());
 
-                    } catch (Exception e) {
-                        logger.error("Failed to send message to client {}: {}", clientSocket.remoteAddress().host(), e.getMessage());
-                    }
-                });
+                sendMessageToRoomUsers(clientAction.getRoomNumber(), data);
+                sendUserListToNewUser(socket,clientAction);
 
-
-                userLocationMap.entries(res -> { // userLocationMap의 모든 entries 가져옴
-                    if (res.succeeded()) {
-                        Map<Integer, JsonObject> entries = res.result();
-
-                        if(entries.size()>0) {
-                            logger.info("userLocationMap에서 모든 엔트리를 성공적으로 검색했을 때: {}", entries);
-
-                            JsonArray players = new JsonArray();
-                            for (Map.Entry<Integer, JsonObject> entry : entries.entrySet()) {
-                                JsonObject playerInfo = entry.getValue();
-                                logger.debug("userId: {}와 userNick:{}와  playerInfo: {}로 엔트리를 처리 중입니다", entry.getKey(), playerInfo);
-                                playerInfo.put("userId", entry.getKey());
-
-                                players.add(playerInfo);
-                                logger.info(String.valueOf(players));
-                            }
-
-                            try{
-                                JsonObject exitUserInfo = new JsonObject();
-                                exitUserInfo.put("action", "EXISTING_USER_INFO");
-                                exitUserInfo.put("players", players);
-                                socket.writeTextMessage(exitUserInfo.toString());
-                                logger.info("EXISTING_USER_INFO 보냄");
-                            }
-
-                            catch (Exception e) {
-                                logger.error( e.getMessage());
-                            }
-                        }
-
-                        // 자신의 위치 관련된 값 저장해줌
-                        JsonObject locationData = new JsonObject()
-                                .put("x", 931)
-                                .put("y",1073)
-                                .put("direction",DOWN)
-                                .put("nickName",clientAction.getNickName());
-                        userLocationMap.put(clientAction.getUserId(), locationData);
-                        logger.info(String.valueOf(socket));
-
-                    } else {
-                        logger.error("Error retrieving location data: {}", res.cause().getMessage());
-                    }
-                });
 
                 break;
 
             case "REMOVE":
                 try{
+                    logger.info(" name : {}, EXIT_ROOM! !! ", clientAction.getUserId());
+
                     int userId = clientAction.getUserId();
-                    removeExitUserInfo(socket,userId);
-                    broadcastUserExit(userId);
+                    int roomNum = clientAction.getRoomNumber();
+                    removeExitUserInfo(socket,userId,roomNum);
+                    JsonObject ExitUserdata = new JsonObject();
+                    ExitUserdata.put("action","REMOVE");
+                    ExitUserdata.put("userId",userId);
+                    sendMessageToRoomUsers(roomNum, ExitUserdata);
 
+                    logger.info("ExitUserdata ", ExitUserdata);
 
+//                    broadcastUserExit(userId);
                 }
                 catch (Exception e){
                     logger.error("REMOVE event 처리 과정 중 에러 발생 ",e);
 
                 }
-
                 break;
 
             default:
@@ -249,6 +202,11 @@ public class ChatServer extends AbstractVerticle {
             if (res.succeeded()) userLocationMap = res.result();
             else logger.error("Error initializing userLocationMapAsync:", res.cause());
         });
+
+        vertx.sharedData().<Integer, Set<Integer>>getAsyncMap("roomToUsersMap", res -> {
+            if (res.succeeded()) roomToUsersMap = res.result();
+            else logger.error("Error initializing userToRoomMap:", res.cause());
+        });
     }
 
     private void configureWebSocketServer() {
@@ -289,6 +247,80 @@ public class ChatServer extends AbstractVerticle {
 
 
     //------------------------------METHOD ----------------------------
+
+    /**
+     * 사용자를 방에 추가하는 메서드
+     *
+     * @param roomNum 방의 번호
+     * @param userId   추가할 사용자의 ID
+     */
+    private void addNewUserToRoomToUserMap(int roomNum, int userId) {
+        System.out.println("addNewUserToRoomToUserMap" + roomNum + ": " + userId);
+
+        roomToUsersMap.get(roomNum, res -> {
+            if (res.succeeded()) {
+                System.out.println(roomNum+ "번 방에 해당하는 value 값을 성공적으로 가져왔을 때");
+
+                Set<Integer> userIDs = res.result();
+                if (userIDs == null) {
+                    System.out.println(roomNum+"번 방에 유저 자신밖에 없을 때");
+                    userIDs = new HashSet<>();
+                }
+                userIDs.add(userId);
+                System.out.println(roomNum+"번 방에 있는 userId 리스트" + userIDs);
+
+                roomToUsersMap.put(roomNum, userIDs, putRes -> {
+                    if (putRes.failed()) {
+                        System.err.println("roomToUsersMap에 값을 추가하는데 실패 한 경우 " + putRes.cause());
+                    }
+                    System.out.println("roomToUsersMap에 값을 성공적으로 추가한 경우 ");
+                    printUsersInRoom(roomNum);
+
+                });
+            } else {
+                // Handle get failure
+                System.out.println(roomNum+ "번 방에 해당하는 value 값을 가져오는데 실패한 경우" + res.cause());
+                printUsersInRoom(roomNum);
+
+            }
+        });
+    }
+
+    private void removeUserFromRoomToUserMap(int roomNum,int userId) {
+        roomToUsersMap.get(roomNum, res -> {
+            if (res.succeeded()) {
+                System.out.println(roomNum+ "번 방에 해당하는 value 값을 성공적으로 가져왔을 때");
+                Set<Integer> userIDs = res.result();
+                if (userIDs != null) {
+                    userIDs.remove(userId);
+                    if (userIDs.isEmpty()) {
+                        System.out.println(roomNum+ "번 방에 유저 자신밖에 없을 때 ");
+                        roomToUsersMap.remove(roomNum, removeRes -> {
+                            if (removeRes.failed()) {
+                                // Handle remove failure
+                                System.err.println("Failed to remove room: " + removeRes.cause());
+                            }
+                            printUsersInRoom(roomNum);
+
+                        });
+                    } else {
+                        roomToUsersMap.put(roomNum, userIDs, putRes -> {
+                            if (putRes.failed()) {
+                                // Handle put failure
+                                System.err.println("Failed to update room: " + putRes.cause());
+                            }
+                            printUsersInRoom(roomNum);
+
+                        });
+                    }
+                }
+            } else {
+                // Handle get failure
+                System.err.println("Failed to get users from room: " + res.cause());
+            }
+        });
+    }
+
     public void changeUserLocationMapData (int userId,int x,int y,int direction){
         logger.debug("changeUserLocationMapData 함수 호출");
         userLocationMap.get(userId, res -> {
@@ -318,7 +350,7 @@ public class ChatServer extends AbstractVerticle {
         });
     }
 
-    public void removeExitUserInfo (ServerWebSocket socket, int userIdToRemove ){
+    public void removeExitUserInfo (ServerWebSocket socket, int userIdToRemove,int roomNum ){
         clients.remove(socket); // 소켓에서 클라이언트 제거
         logger.info("나간 유저 제거 후 clients  값 확인 : {}", clients);
 
@@ -327,8 +359,12 @@ public class ChatServer extends AbstractVerticle {
         userToSocketMap.remove(userIdToRemove, res -> {
             if (res.succeeded()) {
                 logger.info("userToSocketMap에서 유저 {} 제거 성공", userIdToRemove);
+                printUserToSocketMap();
+
             } else {
                 logger.error("userToSocketMap에서 유저 {} 제거 실패: {}", userIdToRemove, res.cause().getMessage());
+                printUserToSocketMap();
+
             }
         });
 
@@ -340,30 +376,14 @@ public class ChatServer extends AbstractVerticle {
 
             } else {
                 logger.error("userLocationMap에서 유저 {} 제거 실패: {}", userIdToRemove, res.cause().getMessage());
-                printUserToSocketMap();
+                printUserLocationMap();
             }
         });
 
+        removeUserFromRoomToUserMap(roomNum,userIdToRemove);
+
+
     }
-
-    public void broadcastUserExit(int userId){
-
-        clients.forEach(clientSocket -> {
-            try {
-                JsonObject data = new JsonObject();
-                data.put("action","REMOVE");
-                data.put("userId",userId);
-
-                clientSocket.writeTextMessage(data.toString());
-                logger.info("유저가 나갔다고 클라이언트에 알림 ", data);
-
-
-            } catch (Exception e) {
-                logger.error("Failed to send message to client {}: {}", clientSocket.remoteAddress().host(), e.getMessage());
-            }
-        });
-    }
-
 
 
     public void printUserLocationMap(){
@@ -391,6 +411,153 @@ public class ChatServer extends AbstractVerticle {
             }
         });
     }
+
+    /**
+     * 방에 있는 사용자 목록을 반환하는 메서드
+     *
+     * @param roomNum 방의 이름
+     */
+    private void printUsersInRoom(Integer roomNum) {
+        System.out.println("printUsersInRoom");
+
+        roomToUsersMap.get(roomNum, res -> {
+            if (res.succeeded()) {
+                Set<Integer> userIDs = res.result();
+                if (userIDs != null) {
+                    // 성공적으로 사용자 목록을 가져왔을 때의 로직
+                    System.out.println("Users in room " + roomNum + ": " + userIDs);
+                } else {
+                    System.out.println("No users found in room " + roomNum);
+                }
+            } else {
+                // 사용자 목록을 가져오는데 실패했을 때의 에러 처리
+                System.err.println("Failed to get users from room " + roomNum + ": " + res.cause());
+            }
+        });
+    }
+
+
+    private Future<Set<Integer>> getUsersInRoom(Integer roomNumber) {
+        System.out.println("getUsersInRoom");
+
+        Promise<Set<Integer>> promise = Promise.promise();
+        roomToUsersMap.get(roomNumber, ar -> {
+            if (ar.succeeded()) {
+                promise.complete(ar.result());
+            } else {
+                promise.fail(ar.cause());
+            }
+        });
+        return promise.future();
+    }
+
+    private void sendMessageToRoomUsers(Integer roomNumber, JsonObject message) {
+        logger.info("sendMessageToRoomUsers : 특정 방에 속한 모든 유저에게 메세지 보냄");
+        getUsersInRoom(roomNumber).onComplete(roomUsers -> {
+            if (roomUsers.succeeded()) {
+                logger.info("sendMessageToRoomUsers / 성공적으로 사용자 목록을 가져왔습니다.");
+                Set<Integer> users = roomUsers.result();
+
+                // 여기서 users가 null 또는 비어 있는 경우를 확인합니다.
+                if (users == null || users.isEmpty()) {
+                    logger.warn("sendMessageToRoomUsers / 방 번호 {}에 사용자가 없습니다.", roomNumber);
+                    return;  // users가 null이나 비어 있으면 추가 로직을 실행하지 않습니다.
+                }
+
+                logger.info("sendMessageToRoomUsers / 해당 방의 모든 사용자에게 메시지를 보내기 위해 사용자 목록을 순회합니다.");
+                for (Integer userId : users) {
+                    logger.info("sendMessageToRoomUsers / 사용자 ID " + userId + "를 통해 해당 사용자의 WebSocket 주소를 비동기로 조회합니다.");
+                    userToSocketMap.get(userId, result -> {
+                        if (result.succeeded() && result.result() != null) {
+                            String clientAddress = result.result();
+                            logger.info("sendMessageToRoomUsers / 사용자의 WebSocket 주소 조회가 성공했습니다. 주소: " + clientAddress);
+
+                            for (ServerWebSocket  clientSocket : clients) {
+                                if (clientSocket.remoteAddress().toString().equals(clientAddress)) {
+                                    try {
+                                        clientSocket.writeTextMessage(message.toString());
+                                        logger.info("sendMessageToRoomUsers / Message sent to user {}: {}", userId, message.encode());
+                                    } catch (Exception e) {
+                                        logger.error("sendMessageToRoomUsers / Failed to send message to client {}: {}", clientSocket.remoteAddress().host(), e.getMessage());
+                                    }
+                                }
+                            }
+                        } else {
+                            if (result.failed()) {
+                                logger.error("sendMessageToRoomUsers / Failed to retrieve socket address for user {}: {}", userId, result.cause().getMessage());
+                            }
+                        }
+                    });
+                }
+            } else {
+                logger.error("sendMessageToRoomUsers / Failed to get users in room: {}", roomUsers.cause().getMessage());
+            }
+        });
+    }
+
+    private void sendUserListToNewUser(ServerWebSocket socket, ClientAction clientAction) {
+        // 먼저, 해당 방의 유저 목록을 가져옵니다.
+        logger.info("sendUserListToNewUser : 당 방의 유저 목록을 가져오고 새로 접속한 유저에게 보내줌");
+
+        getUsersInRoom(clientAction.getRoomNumber()).onComplete(roomUsers -> {
+            if (roomUsers.succeeded()) {
+                logger.info("sendUserListToNewUser : 성공적으로 사용자 목록을 가져왔습니다.");
+                Set<Integer> usersInRoom = roomUsers.result();
+
+                // 해당 방의 유저 정보만 userLocationMap에서 가져옵니다.
+                userLocationMap.entries(res -> {
+                    logger.info("sendUserListToNewUser / 해당 방의 유저 정보만 userLocationMap에서 가져옴");
+
+                    if (res.succeeded()) {
+                        logger.info("sendUserListToNewUser /해당 방의 유저 정보만 성공적으로 가져왔을 때");
+
+                        Map<Integer, JsonObject> entries = res.result();
+                        JsonArray players = new JsonArray();
+
+                        for (Map.Entry<Integer, JsonObject> entry : entries.entrySet()) {
+                            if (usersInRoom.contains(entry.getKey())) {  // 해당 방의 유저만 처리
+                                JsonObject playerInfo = entry.getValue();
+                                logger.debug("sendUserListToNewUser / userId: {}와 userNick:{}와 playerInfo: {}로 엔트리를 처리 중입니다", entry.getKey(), playerInfo);
+                                playerInfo.put("userId", entry.getKey());
+
+                                players.add(playerInfo);
+                                logger.info(String.valueOf(players));
+                            }
+                        }
+
+                        try {
+                            JsonObject exitUserInfo = new JsonObject();
+                            exitUserInfo.put("action", "EXISTING_USER_INFO");
+                            exitUserInfo.put("players", players);
+                            socket.writeTextMessage(exitUserInfo.toString());
+                            logger.info("sendUserListToNewUser / EXISTING_USER_INFO 보냄");
+                        } catch (Exception e) {
+                            logger.error(e.getMessage());
+                        }
+
+                        // 자신의 위치 관련된 값 저장해줌
+                        JsonObject locationData = new JsonObject()
+                                .put("x", 931)
+                                .put("y", 1073)
+                                .put("direction", DOWN)
+                                .put("nickName", clientAction.getNickName());
+                        userLocationMap.put(clientAction.getUserId(), locationData);
+                        logger.info(String.valueOf(socket));
+
+                    } else {
+                        logger.error("sendUserListToNewUser / Error retrieving location data: {}", res.cause().getMessage());
+                    }
+                });
+            } else {
+                logger.error("sendUserListToNewUser / Failed to get users in room: {}", roomUsers.cause().getMessage());
+            }
+        });
+    }
+
+
+
+
+
 
     // -------------------------- Main METHODS --------------------------
     public static void main(String[] args) {
