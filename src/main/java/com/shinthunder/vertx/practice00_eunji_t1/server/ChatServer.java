@@ -63,6 +63,7 @@ public class ChatServer extends AbstractVerticle {
                         int y = clientAction.getY();
                         int direction = clientAction.getDirection();
                         int roomNum = clientAction.getRoomNumber();
+                        String texture = clientAction.getTexture();
 
                         JsonObject moveData = new JsonObject();
                         moveData.put("action","MOVE");
@@ -71,6 +72,8 @@ public class ChatServer extends AbstractVerticle {
                         moveData.put("x",x);
                         moveData.put("y",y);
                         moveData.put("roomNumber",roomNum);
+                        moveData.put("texture",texture);
+
                         sendMessageToRoomUsers(roomNum, moveData);
                         changeUserLocationMapData(userId,x,y,direction);
 
@@ -89,6 +92,8 @@ public class ChatServer extends AbstractVerticle {
                 data.put("action","SAVE_USER_INFO");
                 data.put("userId",clientAction.getUserId());
                 data.put("nickName",clientAction.getNickName());
+                data.put("texture",clientAction.getTexture());
+                logger.info("texture : {}  ", clientAction.getTexture());
 
                 sendMessageToRoomUsers(clientAction.getRoomNumber(), data);
                 sendUserListToNewUser(socket,clientAction);
@@ -540,7 +545,8 @@ public class ChatServer extends AbstractVerticle {
                                 .put("x", 931)
                                 .put("y", 1073)
                                 .put("direction", DOWN)
-                                .put("nickName", clientAction.getNickName());
+                                .put("nickName", clientAction.getNickName())
+                                .put("texture",clientAction.getTexture());
                         userLocationMap.put(clientAction.getUserId(), locationData);
                         logger.info(String.valueOf(socket));
 

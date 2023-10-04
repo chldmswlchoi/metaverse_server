@@ -10,6 +10,15 @@ public class ClientAction implements Serializable {
     private String nickName;
     private int direction;
     private int roomNumber;
+    private String texture;
+
+    public String getTexture() {
+        return texture;
+    }
+
+    public void setTexture(String texture) {
+        this.texture = texture;
+    }
 
     public int getRoomNumber() {
         return roomNumber;
