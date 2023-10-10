@@ -55,6 +55,20 @@ public class ChatServer extends AbstractVerticle {
 //        Buffer buffer = Json.encodeToBuffer(clientAction);
 
         switch (clientAction.getAction()) {
+
+            case "SAVE_USER_INFO":
+                logger.info(" name : {}, SAVE_USER_INFO !! ", clientAction.getUserId());
+
+                JsonObject userData = new JsonObject();
+                userData.put("action","SAVE_USER_INFO_SUCCESS");
+                userData.put("userId",clientAction.getUserId());
+                userData.put("nickName",clientAction.getNickName());
+                userData.put("texture",clientAction.getTexture());
+                userData.put("roomNumber",clientAction.getRoomNumber());
+
+                socket.writeTextMessage(userData.toString());
+
+               break;
             case "MOVE":
 
                     try {
@@ -85,19 +99,42 @@ public class ChatServer extends AbstractVerticle {
 
             case "ENTER_ROOM":
                 logger.info(" name : {}, ENTER_ROOM !! ", clientAction.getUserId());
+                // 맵 데이터에 입장한 유저 정보 저장해줌
                 userToSocketMap.put(clientAction.getUserId(), socket.remoteAddress().toString());
                 addNewUserToRoomToUserMap(clientAction.getRoomNumber(),clientAction.getUserId());
 
+                JsonObject roomData = new JsonObject();
+                roomData.put("action","ENTER_ROOM_SUCCESS");
+                roomData.put("userId",clientAction.getUserId());
+                roomData.put("nickName",clientAction.getNickName());
+                roomData.put("texture",clientAction.getTexture());
+                roomData.put(" roomNumber",clientAction.getRoomNumber());
+                socket.writeTextMessage(roomData.toString());
+
+                break;
+
+            case "EXISTING_USER_INFO":
+                logger.info(" name : {}, EXISTING_USER_INFO !! ", clientAction.getUserId());
+
                 JsonObject data = new JsonObject();
-                data.put("action","SAVE_USER_INFO");
+                data.put("action","ADD_NEW_USER_EVENT");
                 data.put("userId",clientAction.getUserId());
                 data.put("nickName",clientAction.getNickName());
                 data.put("texture",clientAction.getTexture());
                 logger.info("texture : {}  ", clientAction.getTexture());
 
                 sendMessageToRoomUsers(clientAction.getRoomNumber(), data);
+                // 해당 방의 유저 리스트 보내줌
                 sendUserListToNewUser(socket,clientAction);
-
+                // 자신의 위치 관련된 값 저장해줌
+                JsonObject locationData = new JsonObject()
+                        .put("x", 931)
+                        .put("y", 1073)
+                        .put("direction", DOWN)
+                        .put("nickName", clientAction.getNickName())
+                        .put("texture",clientAction.getTexture());
+                userLocationMap.put(clientAction.getUserId(), locationData);
+                logger.info(String.valueOf(socket));
 
                 break;
 
@@ -524,7 +561,6 @@ public class ChatServer extends AbstractVerticle {
                                 JsonObject playerInfo = entry.getValue();
                                 logger.debug("sendUserListToNewUser / userId: {}와 userNick:{}와 playerInfo: {}로 엔트리를 처리 중입니다", entry.getKey(), playerInfo);
                                 playerInfo.put("userId", entry.getKey());
-
                                 players.add(playerInfo);
                                 logger.info(String.valueOf(players));
                             }
@@ -532,23 +568,15 @@ public class ChatServer extends AbstractVerticle {
 
                         try {
                             JsonObject exitUserInfo = new JsonObject();
-                            exitUserInfo.put("action", "EXISTING_USER_INFO");
+                            exitUserInfo.put("action", "EXISTING_USER_INFO_SUCCESS");
                             exitUserInfo.put("players", players);
                             socket.writeTextMessage(exitUserInfo.toString());
-                            logger.info("sendUserListToNewUser / EXISTING_USER_INFO 보냄");
+                            logger.info("sendUserListToNewUser / EXISTING_USER_INFO_SUCCESS 보냄");
                         } catch (Exception e) {
                             logger.error(e.getMessage());
                         }
 
-                        // 자신의 위치 관련된 값 저장해줌
-                        JsonObject locationData = new JsonObject()
-                                .put("x", 931)
-                                .put("y", 1073)
-                                .put("direction", DOWN)
-                                .put("nickName", clientAction.getNickName())
-                                .put("texture",clientAction.getTexture());
-                        userLocationMap.put(clientAction.getUserId(), locationData);
-                        logger.info(String.valueOf(socket));
+
 
                     } else {
                         logger.error("sendUserListToNewUser / Error retrieving location data: {}", res.cause().getMessage());
