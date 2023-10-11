@@ -70,7 +70,6 @@ public class ChatServer extends AbstractVerticle {
 
                break;
             case "MOVE":
-
                     try {
                         int userId = clientAction.getUserId();
                         int x = clientAction.getX();
@@ -138,6 +137,41 @@ public class ChatServer extends AbstractVerticle {
 
                 break;
 
+            case "PREPARE_ROOM_CHANGE":
+                try{
+                    logger.info(" name : {}, PREPARE_ROOM_CHANGE! !! ", clientAction.getUserId());
+
+                    int userId = clientAction.getUserId();
+                    int roomNum = clientAction.getRoomNumber();
+                    removeUserFromRoomToUserMap(roomNum,userId);
+                    removeUserLocationMap(userId);
+
+
+                    JsonObject ExitUserdata = new JsonObject();
+                    ExitUserdata.put("action","REMOVE");
+                    ExitUserdata.put("userId",userId);
+                    logger.info("ExitUserdata ", ExitUserdata);
+                    sendMessageToRoomUsers(roomNum, ExitUserdata);
+
+
+                    int changeRoomNum = clientAction.getChangeRoomNumber();
+                    JsonObject ChangeRoomData = new JsonObject();
+                    ChangeRoomData.put("action","PREPARE_ROOM_CHANGE_SUCCESS");
+                    ChangeRoomData.put("userId",userId);
+                    ChangeRoomData.put("changeRoomNumber",changeRoomNum);
+                    ChangeRoomData.put("roomNumber",roomNum);
+                    logger.info("PREPARE_ROOM_CHANGE_SUCCESS ", ChangeRoomData);
+
+                    addNewUserToRoomToUserMap(changeRoomNum,clientAction.getUserId());
+                    socket.writeTextMessage(ChangeRoomData.toString());
+
+                }
+                catch (Exception e){
+                    logger.error("REMOVE event 처리 과정 중 에러 발생 ",e);
+
+                }
+                break;
+
             case "REMOVE":
                 try{
                     logger.info(" name : {}, EXIT_ROOM! !! ", clientAction.getUserId());
@@ -152,7 +186,6 @@ public class ChatServer extends AbstractVerticle {
 
                     logger.info("ExitUserdata ", ExitUserdata);
 
-//                    broadcastUserExit(userId);
                 }
                 catch (Exception e){
                     logger.error("REMOVE event 처리 과정 중 에러 발생 ",e);
@@ -396,6 +429,15 @@ public class ChatServer extends AbstractVerticle {
         clients.remove(socket); // 소켓에서 클라이언트 제거
         logger.info("나간 유저 제거 후 clients  값 확인 : {}", clients);
 
+        removeUserToSocketMap(userIdToRemove);
+        removeUserLocationMap(userIdToRemove);
+        removeUserFromRoomToUserMap(roomNum,userIdToRemove);
+
+
+    }
+
+    public void removeUserToSocketMap(int userIdToRemove){
+        logger.info("removeUserToSocketMap");
 
         // userToSocketMap에서 유저 제거
         userToSocketMap.remove(userIdToRemove, res -> {
@@ -409,7 +451,10 @@ public class ChatServer extends AbstractVerticle {
 
             }
         });
+    }
 
+    public void removeUserLocationMap(int userIdToRemove){
+        logger.info("removeUserLocationMap");
         // userLocationMap에서 유저 제거
         userLocationMap.remove(userIdToRemove, res -> {
             if (res.succeeded()) {
@@ -422,11 +467,7 @@ public class ChatServer extends AbstractVerticle {
             }
         });
 
-        removeUserFromRoomToUserMap(roomNum,userIdToRemove);
-
-
     }
-
 
     public void printUserLocationMap(){
         logger.debug("printUserLocationMap ");
