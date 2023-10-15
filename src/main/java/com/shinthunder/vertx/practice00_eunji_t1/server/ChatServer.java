@@ -126,9 +126,11 @@ public class ChatServer extends AbstractVerticle {
                 // 해당 방의 유저 리스트 보내줌
                 sendUserListToNewUser(socket,clientAction);
                 // 자신의 위치 관련된 값 저장해줌
+                int x = clientAction.getX();
+                int y = clientAction.getY();
                 JsonObject locationData = new JsonObject()
-                        .put("x", 931)
-                        .put("y", 1073)
+                        .put("x", x)
+                        .put("y", y)
                         .put("direction", DOWN)
                         .put("nickName", clientAction.getNickName())
                         .put("texture",clientAction.getTexture());
@@ -628,9 +630,6 @@ public class ChatServer extends AbstractVerticle {
             }
         });
     }
-
-
-
 
 
 
