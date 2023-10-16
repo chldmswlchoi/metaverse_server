@@ -13,6 +13,28 @@ public class ClientAction implements Serializable {
     private int changeRoomNumber;
     private String texture;
 
+    // 신지 추가
+    private String screenShareStreamId;
+    private String videoStreamId;
+
+    public String getScreenShareStreamId() {
+        return screenShareStreamId;
+    }
+
+    public void setScreenShareStreamId(String screenShareStreamId) {
+        this.screenShareStreamId = screenShareStreamId;
+    }
+
+    public String getVideoStreamId() {
+        return videoStreamId;
+    }
+
+    public void setVideoStreamId(String videoStreamId) {
+        this.videoStreamId = videoStreamId;
+    }
+
+    //------------------------------
+
     public int getChangeRoomNumber() {
         return changeRoomNumber;
     }

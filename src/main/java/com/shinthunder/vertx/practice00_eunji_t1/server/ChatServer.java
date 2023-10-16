@@ -48,156 +48,201 @@ public class ChatServer extends AbstractVerticle {
     private AsyncMap<Integer, String> userToSocketMap;  // <userId, socketAddress>
     private AsyncMap<Integer, JsonObject> userLocationMap; // <userId, locationData>
     private AsyncMap<Integer, Set<Integer>> roomToUsersMap;  // roonNum to set of userIDs
+    private AsyncMap<Integer, JsonObject> userMediaMap;  // TODO : 신지 추가 <userId, MediaData>
+
 
     // -------------------------- WEBSOCKET HANDLER METHODS --------------------------
     private void handleClientAction(ServerWebSocket socket, ClientAction clientAction) {
         logger.info("!!!!!!!!!!!!!!!!!!!!!!!! handleClientAction!!!!!!!!!!!!!!!!!!!!");
 //        Buffer buffer = Json.encodeToBuffer(clientAction);
 
-        switch (clientAction.getAction()) {
+         int x =clientAction.getX();;
+         int y= clientAction.getY();
+         int userId = clientAction.getUserId();;
+         String nickName = clientAction.getNickName();
+         int direction= clientAction.getDirection();
+         int roomNumber= clientAction.getRoomNumber();
+         int changeRoomNumber = clientAction.getChangeRoomNumber();
+         String texture = clientAction.getTexture();
 
-            case "SAVE_USER_INFO":
-                logger.info(" name : {}, SAVE_USER_INFO !! ", clientAction.getUserId());
+        logger.info(String.format("x: %d, y: %d, userId: %d, nickName: %s, direction: %d, roomNumber: %d, changeRoomNumber: %d, texture: %s",
+                x, y, userId, nickName, direction, roomNumber, changeRoomNumber, texture));
 
-                JsonObject userData = new JsonObject();
-                userData.put("action","SAVE_USER_INFO_SUCCESS");
-                userData.put("userId",clientAction.getUserId());
-                userData.put("nickName",clientAction.getNickName());
-                userData.put("texture",clientAction.getTexture());
-                userData.put("roomNumber",clientAction.getRoomNumber());
+        try{
+            switch (clientAction.getAction()) {
 
-                socket.writeTextMessage(userData.toString());
+                case "SAVE_USER_INFO":
+                    try{
+                        logger.info(" name : {}, SAVE_USER_INFO !! ", userId);
+                        JsonObject userData = new JsonObject();
+                        userData.put("action","SAVE_USER_INFO_SUCCESS");
+                        userData.put("userId",userId);
+                        userData.put("nickName",nickName);
+                        userData.put("texture",texture);
+                        userData.put("roomNumber",roomNumber);
+                        socket.writeTextMessage(userData.toString());
+                    }catch (Exception e){
+                        logger.error("Error handling SAVE_USER_INFO", e);
+                    }
 
-               break;
-            case "MOVE":
+                    break;
+                case "MOVE":
                     try {
-                        int userId = clientAction.getUserId();
-                        int x = clientAction.getX();
-                        int y = clientAction.getY();
-                        int direction = clientAction.getDirection();
-                        int roomNum = clientAction.getRoomNumber();
-                        String texture = clientAction.getTexture();
-
                         JsonObject moveData = new JsonObject();
                         moveData.put("action","MOVE");
                         moveData.put("direction",direction);
                         moveData.put("userId",userId);
                         moveData.put("x",x);
                         moveData.put("y",y);
-                        moveData.put("roomNumber",roomNum);
+                        moveData.put("roomNumber",roomNumber);
                         moveData.put("texture",texture);
 
-                        sendMessageToRoomUsers(roomNum, moveData);
+                        sendMessageToRoomUsers(roomNumber, moveData);
                         changeUserLocationMapData(userId,x,y,direction);
 
                     } catch (Exception e) {
-                        logger.error("Failed to handle MOVE message to client");
+                        logger.error("Error handling  MOVE", e);
+                    }
+                    break;
+
+                case "ENTER_ROOM":
+                    try{
+                        logger.info(" name : {}, ENTER_ROOM !! ", userId);
+                        // 맵 데이터에 입장한 유저 정보 저장해줌
+                        userToSocketMap.put(userId, socket.remoteAddress().toString());
+                        addNewUserToRoomToUserMap(roomNumber,userId);
+
+                        JsonObject roomData = new JsonObject();
+                        roomData.put("action","ENTER_ROOM_SUCCESS");
+                        roomData.put("userId",userId);
+                        roomData.put("nickName",nickName);
+                        roomData.put("texture",texture);
+                        roomData.put(" roomNumber",roomNumber);
+                        socket.writeTextMessage(roomData.toString());
+                    } catch (Exception e) {
+                    logger.error("Error handling  ENTER_ROOM", e);}
+                    break;
+
+                case "EXISTING_USER_INFO":
+                    try{
+                        logger.info(" name : {}, EXISTING_USER_INFO !! ", userId);
+
+                        JsonObject data = new JsonObject();
+                        data.put("action","ADD_NEW_USER_EVENT");
+                        data.put("userId",userId);
+                        data.put("nickName",nickName);
+                        data.put("texture",texture);
+                        logger.info("texture : {}  ", texture);
+                        sendMessageToRoomUsers(roomNumber, data);
+                        // 해당 방의 유저 리스트 보내줌
+                        sendUserListToNewUser(socket,clientAction);
+                        // 자신의 위치 관련된 값 저장해줌
+
+                        JsonObject locationData = new JsonObject()
+                                .put("x", x)
+                                .put("y", y)
+                                .put("direction", DOWN)
+                                .put("nickName", nickName)
+                                .put("texture",texture);
+                        userLocationMap.put(userId, locationData);
+                        logger.info(String.valueOf(socket));
+                    }catch (Exception e) {
+                        logger.error("Error handling  EXISTING_USER_INFO", e);}
+
+
+                    break;
+
+                case "PREPARE_ROOM_CHANGE":
+
+                    try{
+                        logger.info(" name : {}, PREPARE_ROOM_CHANGE! !! ", clientAction.getUserId());
+
+                        removeUserFromRoomToUserMap(roomNumber,userId);
+                        removeUserLocationMap(userId);
+                        JsonObject ExitUserdata = new JsonObject();
+                        ExitUserdata.put("action","REMOVE");
+                        ExitUserdata.put("userId",userId);
+                        logger.info("ExitUserdata ", ExitUserdata);
+                        sendMessageToRoomUsers(roomNumber, ExitUserdata);
+
+                        JsonObject ChangeRoomData = new JsonObject();
+                        ChangeRoomData.put("action","PREPARE_ROOM_CHANGE_SUCCESS");
+                        ChangeRoomData.put("userId",userId);
+                        ChangeRoomData.put("changeRoomNumber",changeRoomNumber);
+                        ChangeRoomData.put("roomNumber",roomNumber);
+                        logger.info("PREPARE_ROOM_CHANGE_SUCCESS ", ChangeRoomData);
+
+                        addNewUserToRoomToUserMap(changeRoomNumber,userId);
+                        socket.writeTextMessage(ChangeRoomData.toString());
+
+                    }
+                    catch (Exception e){
+                        logger.error("Error handling  PREPARE_ROOM_CHANGE", e);}
+
+                    break;
+
+                case "REMOVE":
+
+                    try{
+                        logger.info(" name : {}, EXIT_ROOM! !! ", userId);
+
+                        removeExitUserInfo(socket,userId,roomNumber);
+                        JsonObject ExitUserdata = new JsonObject();
+                        ExitUserdata.put("action","REMOVE");
+                        ExitUserdata.put("userId",userId);
+                        sendMessageToRoomUsers(roomNumber, ExitUserdata);
+                        logger.info("ExitUserdata ", ExitUserdata);
+
+                    }
+                    catch (Exception e){
+                        logger.error("Error handling  REMOVE", e);
                     }
 
-                break;
+                    break;
 
-            case "ENTER_ROOM":
-                logger.info(" name : {}, ENTER_ROOM !! ", clientAction.getUserId());
-                // 맵 데이터에 입장한 유저 정보 저장해줌
-                userToSocketMap.put(clientAction.getUserId(), socket.remoteAddress().toString());
-                addNewUserToRoomToUserMap(clientAction.getRoomNumber(),clientAction.getUserId());
+                // TODO :  신지 추가
+                case "ADD_WEBRTC_STATUS":
 
-                JsonObject roomData = new JsonObject();
-                roomData.put("action","ENTER_ROOM_SUCCESS");
-                roomData.put("userId",clientAction.getUserId());
-                roomData.put("nickName",clientAction.getNickName());
-                roomData.put("texture",clientAction.getTexture());
-                roomData.put(" roomNumber",clientAction.getRoomNumber());
-                socket.writeTextMessage(roomData.toString());
+                    try{
+                        logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                        logger.info("       ADD_WEBRTC_STATUS : ");
+                        logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+//                logger.info("ADD_WEBRTC_STATUS : getAction : {}", clientAction.getAction());
+//                logger.info("ADD_WEBRTC_STATUS : getUserId : {}", clientAction.getUserId());
+//                logger.info("ADD_WEBRTC_STATUS : getNickName : {}", clientAction.getNickName());
+//                logger.info("ADD_WEBRTC_STATUS : getMediaType : {}", clientAction.getMediaType());
+//                logger.info("ADD_WEBRTC_STATUS : getStreamId : {}", clientAction.getStreamId());
+                        addMediaData(clientAction.getUserId(), clientAction.getNickName(),
+                                clientAction.getRoomNumber(), clientAction.getScreenShareStreamId(), clientAction.getVideoStreamId());
 
-                break;
+                    }catch (Exception e){
+                        logger.error("Error handling  ADD_WEBRTC_STATUS", e);
+                    }
 
-            case "EXISTING_USER_INFO":
-                logger.info(" name : {}, EXISTING_USER_INFO !! ", clientAction.getUserId());
+                    break;
 
-                JsonObject data = new JsonObject();
-                data.put("action","ADD_NEW_USER_EVENT");
-                data.put("userId",clientAction.getUserId());
-                data.put("nickName",clientAction.getNickName());
-                data.put("texture",clientAction.getTexture());
-                logger.info("texture : {}  ", clientAction.getTexture());
+                // TODO :  신지 추가
+                case "UPDATE_WEBRTC_LEAVE":
+                    try{
+                        logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                        logger.info("       UPDATE_WEBRTC_LEAVE : ");
+                        logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                        removeMediaData(clientAction.getUserId(), clientAction.getNickName(), clientAction.getRoomNumber(),
+                                clientAction.getScreenShareStreamId(), clientAction.getVideoStreamId());
+                    }catch (Exception e){
+                        logger.error("Error handling  UPDATE_WEBRTC_LEAVE", e);
+                    }
 
-                sendMessageToRoomUsers(clientAction.getRoomNumber(), data);
-                // 해당 방의 유저 리스트 보내줌
-                sendUserListToNewUser(socket,clientAction);
-                // 자신의 위치 관련된 값 저장해줌
-                int x = clientAction.getX();
-                int y = clientAction.getY();
-                JsonObject locationData = new JsonObject()
-                        .put("x", x)
-                        .put("y", y)
-                        .put("direction", DOWN)
-                        .put("nickName", clientAction.getNickName())
-                        .put("texture",clientAction.getTexture());
-                userLocationMap.put(clientAction.getUserId(), locationData);
-                logger.info(String.valueOf(socket));
+                    break;
 
-                break;
-
-            case "PREPARE_ROOM_CHANGE":
-                try{
-                    logger.info(" name : {}, PREPARE_ROOM_CHANGE! !! ", clientAction.getUserId());
-
-                    int userId = clientAction.getUserId();
-                    int roomNum = clientAction.getRoomNumber();
-                    removeUserFromRoomToUserMap(roomNum,userId);
-                    removeUserLocationMap(userId);
-
-
-                    JsonObject ExitUserdata = new JsonObject();
-                    ExitUserdata.put("action","REMOVE");
-                    ExitUserdata.put("userId",userId);
-                    logger.info("ExitUserdata ", ExitUserdata);
-                    sendMessageToRoomUsers(roomNum, ExitUserdata);
-
-
-                    int changeRoomNum = clientAction.getChangeRoomNumber();
-                    JsonObject ChangeRoomData = new JsonObject();
-                    ChangeRoomData.put("action","PREPARE_ROOM_CHANGE_SUCCESS");
-                    ChangeRoomData.put("userId",userId);
-                    ChangeRoomData.put("changeRoomNumber",changeRoomNum);
-                    ChangeRoomData.put("roomNumber",roomNum);
-                    logger.info("PREPARE_ROOM_CHANGE_SUCCESS ", ChangeRoomData);
-
-                    addNewUserToRoomToUserMap(changeRoomNum,clientAction.getUserId());
-                    socket.writeTextMessage(ChangeRoomData.toString());
-
-                }
-                catch (Exception e){
-                    logger.error("REMOVE event 처리 과정 중 에러 발생 ",e);
-
-                }
-                break;
-
-            case "REMOVE":
-                try{
-                    logger.info(" name : {}, EXIT_ROOM! !! ", clientAction.getUserId());
-
-                    int userId = clientAction.getUserId();
-                    int roomNum = clientAction.getRoomNumber();
-                    removeExitUserInfo(socket,userId,roomNum);
-                    JsonObject ExitUserdata = new JsonObject();
-                    ExitUserdata.put("action","REMOVE");
-                    ExitUserdata.put("userId",userId);
-                    sendMessageToRoomUsers(roomNum, ExitUserdata);
-
-                    logger.info("ExitUserdata ", ExitUserdata);
-
-                }
-                catch (Exception e){
-                    logger.error("REMOVE event 처리 과정 중 에러 발생 ",e);
-
-                }
-                break;
-
-            default:
-                logger.warn("Unknown action: {}", clientAction);
+                default:
+                    logger.warn("Unknown action: {}", clientAction);
+            }
         }
+        catch(Exception e){
+            logger.error("Unexpected error occurred while processing client action", e);
+        }
+
     }
 
     private void broadcastMessageInRoom(ChatItem chatItem) {
@@ -654,6 +699,104 @@ public class ChatServer extends AbstractVerticle {
         ClusterManager mgr = new HazelcastClusterManager(hazelcastConfig);
         return new VertxOptions().setClusterManager(mgr);
     }
+
+
+    //------------------------ webrtc -----------------------------
+
+    // TODO :  신지 추가
+    public void addMediaData(
+            int userId,
+            String nickName,
+            int roomNumber,
+            String screenShareStreamId,
+            String videoStreamId
+    ) {
+        // mediaData 관련된 값 저장해줌
+        JsonObject mediaData = new JsonObject()
+                .put("userId", userId)
+                .put("nickName", nickName)
+                .put("roomNumber", roomNumber)
+                .put("videoStreamId", videoStreamId)
+                .put("screenShareStreamId", screenShareStreamId);
+        userMediaMap.put(userId, mediaData);
+        userMediaMap.entries(res -> {
+            if (res.succeeded()) {
+                Map<Integer, JsonObject> entries = res.result();
+                logger.info("userMediaMap 값 : \n{}", entries);
+
+                JsonArray jsonArray = new JsonArray();
+                for (Map.Entry<Integer, JsonObject> entry : entries.entrySet()) {
+                    JsonObject jsonObject = entry.getValue();
+                    if (jsonObject.getInteger("roomNumber") == roomNumber) {
+//                        updateMediaData(roomNumber, jsonObject);
+                        jsonArray.add(jsonObject);
+                    }
+                }
+
+                logger.info("String.valueOf(jsonArray) 값 : \n{}", String.valueOf(jsonArray));
+//                JsonObject jsonObjectToSend = new JsonObject(String.valueOf(jsonArray));
+                JsonObject jsonObjectToSend = new JsonObject().put("users", jsonArray);
+                logger.info("jsonObjectToSend 값 : \n{}", jsonObjectToSend);
+                updateMediaData(roomNumber, jsonObjectToSend);
+
+            } else {
+                logger.error("userMediaMap entries 가져오는 실패함", res.cause().getMessage());
+            }
+        });
+    }
+
+    // TODO :  신지 추가
+    public void updateMediaData(int roomNumber, JsonObject jsonObject) {
+        JsonObject jsonObject1 = jsonObject;
+        jsonObject1.put("action", "UPDATED_WEBRTC_STATUS");
+        sendMessageToRoomUsers(roomNumber, jsonObject);
+    }
+
+    // TODO :  신지 추가
+    public void removeMediaData(
+            int userId,
+            String nickName,
+            int roomNumber,
+            String screenShareStreamId,
+            String videoStreamId
+    ) {
+
+        userMediaMap.entries(res -> {
+            if (res.succeeded()) {
+                Map<Integer, JsonObject> entries = res.result();
+                logger.info("userMediaMap 값 : \n{}", entries);
+
+                JsonArray jsonArray = new JsonArray();
+                for (Map.Entry<Integer, JsonObject> entry : entries.entrySet()) {
+                    JsonObject jsonObject = entry.getValue();
+                    if (jsonObject.getInteger("roomNumber") == roomNumber) {
+//                        updateMediaData(roomNumber, jsonObject);
+                        jsonArray.add(jsonObject);
+                    }
+                    // userId와 일치하는 항목을 찾으면 해당 항목을 userMediaMap에서 제거
+                    if (entry.getKey().equals(userId)) {
+                        userMediaMap.remove(userId, removeRes -> {
+                            if (removeRes.succeeded()) {
+                                logger.info("userId {} 에 해당하는 항목을 userMediaMap에서 제거하였습니다.", userId);
+                            } else {
+                                logger.error("userMediaMap에서 userId {} 항목을 제거하는 데 실패했습니다.", userId, removeRes.cause());
+                            }
+                        });
+                    }
+                }
+
+                logger.info("String.valueOf(jsonArray) 값 : \n{}", String.valueOf(jsonArray));
+//                JsonObject jsonObjectToSend = new JsonObject(String.valueOf(jsonArray));
+                JsonObject jsonObjectToSend = new JsonObject().put("users", jsonArray);
+                logger.info("jsonObjectToSend 값 : \n{}", jsonObjectToSend);
+                updateMediaData(roomNumber, jsonObjectToSend);
+
+            } else {
+                logger.error("userMediaMap entries 가져오는 실패함", res.cause().getMessage());
+            }
+        });
+    }
+
 
 
 }
