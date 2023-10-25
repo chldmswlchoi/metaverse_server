@@ -1,4 +1,3 @@
-// TODO : 230821 1520 HTTP로 이미지 업로드/다운로드 코드 가져오기 완료
 package com.shinthunder.vertx.practice00_eunji_t1.server;
 
 import com.hazelcast.config.Config;
@@ -21,9 +20,9 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-public class ChatServer extends AbstractVerticle {
+public class MetaverseServer extends AbstractVerticle {
     // -------------------------- CONSTANTS --------------------------
-    private static final Logger logger = LoggerFactory.getLogger(ChatServer.class);
+    private static final Logger logger = LoggerFactory.getLogger(MetaverseServer.class);
     private static final int WEBSOCKET_PORT = 8080;
     private static final int NUM_OF_INSTANCES = 1; // 버티클 개수
     private static final String BROADCAST_MESSAGE_ADDRESS = "broadcast.message.address";
@@ -71,21 +70,7 @@ public class ChatServer extends AbstractVerticle {
         try{
             switch (clientAction.getAction()) {
 
-                case "SAVE_USER_INFO":
-                    try{
-                        logger.info(" name : {}, SAVE_USER_INFO !! ", userId);
-                        JsonObject userData = new JsonObject();
-                        userData.put("action","SAVE_USER_INFO_SUCCESS");
-                        userData.put("userId",userId);
-                        userData.put("nickName",nickName);
-                        userData.put("texture",texture);
-                        userData.put("roomNumber",roomNumber);
-                        socket.writeTextMessage(userData.toString());
-                    }catch (Exception e){
-                        logger.error("Error handling SAVE_USER_INFO", e);
-                    }
 
-                    break;
                 case "MOVE":
                     try {
                         JsonObject moveData = new JsonObject();
@@ -105,22 +90,22 @@ public class ChatServer extends AbstractVerticle {
                     }
                     break;
 
-                case "ENTER_ROOM":
+                case "ENTER_METAVERSE":
                     try{
-                        logger.info(" name : {}, ENTER_ROOM !! ", userId);
+                        logger.info(" name : {}, ENTER_METAVERSE !! ", userId);
                         // 맵 데이터에 입장한 유저 정보 저장해줌
                         userToSocketMap.put(userId, socket.remoteAddress().toString());
                         addNewUserToRoomToUserMap(roomNumber,userId);
 
                         JsonObject roomData = new JsonObject();
-                        roomData.put("action","ENTER_ROOM_SUCCESS");
+                        roomData.put("action","ENTER_METAVERSE_SUCCESS");
                         roomData.put("userId",userId);
                         roomData.put("nickName",nickName);
                         roomData.put("texture",texture);
                         roomData.put(" roomNumber",roomNumber);
                         socket.writeTextMessage(roomData.toString());
                     } catch (Exception e) {
-                    logger.error("Error handling  ENTER_ROOM", e);}
+                    logger.error("Error handling  ENTER_METAVERSE", e);}
                     break;
 
                 case "EXISTING_USER_INFO":
@@ -133,65 +118,54 @@ public class ChatServer extends AbstractVerticle {
                         data.put("nickName",nickName);
                         data.put("texture",texture);
                         logger.info("texture : {}  ", texture);
+                        // roomNumber에 해당하는 유저들에게 data 보냄
                         sendMessageToRoomUsers(roomNumber, data);
                         // 해당 방의 유저 리스트 보내줌
                         sendUserListToNewUser(socket,clientAction);
-                        // 자신의 위치 관련된 값 저장해줌
+                        //  위치 관련된 값 초기화 해줌
+                        initLocationData(x,y,userId,nickName,texture,socket);
 
-                        JsonObject locationData = new JsonObject()
-                                .put("x", x)
-                                .put("y", y)
-                                .put("direction", DOWN)
-                                .put("nickName", nickName)
-                                .put("texture",texture);
-                        userLocationMap.put(userId, locationData);
-                        logger.info(String.valueOf(socket));
                     }catch (Exception e) {
                         logger.error("Error handling  EXISTING_USER_INFO", e);}
-
-
                     break;
 
-                case "PREPARE_ROOM_CHANGE":
+                case "TRY_ROOM_CHANGE":
 
                     try{
-                        logger.info(" name : {}, PREPARE_ROOM_CHANGE! !! ", clientAction.getUserId());
+                        logger.info(" name : {}, TRY_ROOM_CHANGE! !! ", clientAction.getUserId());
 
-                        removeUserFromRoomToUserMap(roomNumber,userId);
-                        removeUserLocationMap(userId);
-                        JsonObject ExitUserdata = new JsonObject();
-                        ExitUserdata.put("action","REMOVE");
-                        ExitUserdata.put("userId",userId);
-                        logger.info("ExitUserdata ", ExitUserdata);
-                        sendMessageToRoomUsers(roomNumber, ExitUserdata);
+                        //방 이동을 위해 관련된 기존 방에 관련된 데이터 제거해줌
+                        removeDataToChangeRoom(roomNumber,userId);
 
+                        //기존 방 유저에게 해당 유저가 나갔다고 알려줌
+                        sendMessageRemoveUser(roomNumber,userId);
+
+                        // 이동한 방번호와 유저 정보를 연결시켜 저장해줌
+                        addNewUserToRoomToUserMap(changeRoomNumber,userId);
+
+                        // 해당 유저에게 방 이동이 성공했다고 알려줌
                         JsonObject ChangeRoomData = new JsonObject();
-                        ChangeRoomData.put("action","PREPARE_ROOM_CHANGE_SUCCESS");
+                        ChangeRoomData.put("action","TRY_ROOM_CHANGE_SUCCESS");
                         ChangeRoomData.put("userId",userId);
                         ChangeRoomData.put("changeRoomNumber",changeRoomNumber);
                         ChangeRoomData.put("roomNumber",roomNumber);
-                        logger.info("PREPARE_ROOM_CHANGE_SUCCESS ", ChangeRoomData);
-
-                        addNewUserToRoomToUserMap(changeRoomNumber,userId);
+                        logger.info("TRY_ROOM_CHANGE_SUCCESS ", ChangeRoomData);
                         socket.writeTextMessage(ChangeRoomData.toString());
 
                     }
                     catch (Exception e){
-                        logger.error("Error handling  PREPARE_ROOM_CHANGE", e);}
-
+                        logger.error("Error handling  TRY_ROOM_CHANGE", e);}
                     break;
 
-                case "REMOVE":
+                case "EXIT_METAVERSE":
 
                     try{
-                        logger.info(" name : {}, EXIT_ROOM! !! ", userId);
+                        logger.info(" name : {}, EXIT_METAVERSE! !! ", userId);
 
+                        //메타버스 나갔을 때 유저 관련된 정보 모두 제거해줌
                         removeExitUserInfo(socket,userId,roomNumber);
-                        JsonObject ExitUserdata = new JsonObject();
-                        ExitUserdata.put("action","REMOVE");
-                        ExitUserdata.put("userId",userId);
-                        sendMessageToRoomUsers(roomNumber, ExitUserdata);
-                        logger.info("ExitUserdata ", ExitUserdata);
+                        //기존 방 유저에게 해당 유저가 나갔다고 알려줌
+                        sendMessageRemoveUser(roomNumber,userId);
 
                     }
                     catch (Exception e){
@@ -243,6 +217,23 @@ public class ChatServer extends AbstractVerticle {
             logger.error("Unexpected error occurred while processing client action", e);
         }
 
+    }
+
+    private void sendMessageRemoveUser(int roomNumber,int userId) {
+        logger.info("sendMessageRemoveUser ");
+
+        JsonObject ExitUserdata = new JsonObject();
+        ExitUserdata.put("action","REMOVE");
+        ExitUserdata.put("userId",userId);
+        logger.info("ExitUserdata ", ExitUserdata);
+        sendMessageToRoomUsers(roomNumber, ExitUserdata);
+    }
+
+    private void removeDataToChangeRoom(int roomNumber, int userId) {
+        logger.info("removeDataToChangeRoom ");
+
+        removeUserFromRoomToUserMap(roomNumber,userId);
+        removeUserLocationMap(userId);
     }
 
     private void broadcastMessageInRoom(ChatItem chatItem) {
@@ -329,6 +320,13 @@ public class ChatServer extends AbstractVerticle {
             if (res.succeeded()) roomToUsersMap = res.result();
             else logger.error("Error initializing userToRoomMap:", res.cause());
         });
+
+        vertx.sharedData().<Integer, JsonObject>getAsyncMap("userMediaMap", res -> {
+            if (res.succeeded()) userMediaMap = res.result();
+            else logger.error("Error initializing userMediaMap:", res.cause());
+        });
+
+
     }
 
     private void configureWebSocketServer() {
@@ -368,7 +366,27 @@ public class ChatServer extends AbstractVerticle {
     }
 
 
+
+    //------------------------------handleClientAction 로직 관련 메서드 ----------------------------
+
+    private void initLocationData(int x,int y,int userId,String nickName,String texture,ServerWebSocket socket){
+        JsonObject locationData = new JsonObject()
+                .put("x", x)
+                .put("y", y)
+                .put("direction", DOWN)
+                .put("nickName", nickName)
+                .put("texture",texture);
+        userLocationMap.put(userId, locationData);
+    }
+
+
+
+
+    //------------------------------handleClientAction 로직 관련 메서드 ----------------------------
+
+
     //------------------------------METHOD ----------------------------
+
 
     /**
      * 사용자를 방에 추가하는 메서드
@@ -473,14 +491,14 @@ public class ChatServer extends AbstractVerticle {
     }
 
     public void removeExitUserInfo (ServerWebSocket socket, int userIdToRemove,int roomNum ){
+        logger.debug("removeExitUserInfo");
+
         clients.remove(socket); // 소켓에서 클라이언트 제거
         logger.info("나간 유저 제거 후 clients  값 확인 : {}", clients);
 
         removeUserToSocketMap(userIdToRemove);
         removeUserLocationMap(userIdToRemove);
         removeUserFromRoomToUserMap(roomNum,userIdToRemove);
-
-
     }
 
     public void removeUserToSocketMap(int userIdToRemove){
@@ -687,7 +705,7 @@ public class ChatServer extends AbstractVerticle {
         VertxOptions options = configureVertxOptions();
         Vertx.clusteredVertx(options).onComplete(res -> {
             if (res.succeeded())
-                res.result().deployVerticle(ChatServer.class.getName(), new DeploymentOptions().setInstances(NUM_OF_INSTANCES));
+                res.result().deployVerticle(MetaverseServer.class.getName(), new DeploymentOptions().setInstances(NUM_OF_INSTANCES));
             else logger.error("Cluster up failed: ", res.cause());
         });
     }
@@ -709,8 +727,7 @@ public class ChatServer extends AbstractVerticle {
             String nickName,
             int roomNumber,
             String screenShareStreamId,
-            String videoStreamId
-    ) {
+            String videoStreamId) {
         // mediaData 관련된 값 저장해줌
         JsonObject mediaData = new JsonObject()
                 .put("userId", userId)
