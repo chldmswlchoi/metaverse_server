@@ -23,7 +23,9 @@ import java.util.Set;
 public class MetaverseServer extends AbstractVerticle {
     // -------------------------- CONSTANTS --------------------------
     private static final Logger logger = LoggerFactory.getLogger(MetaverseServer.class);
-    private static final int WEBSOCKET_PORT = 8080;
+//    private static final int WEBSOCKET_PORT = 8080;
+    private static final int WEBSOCKET_PORT = 60002;
+
     private static final int NUM_OF_INSTANCES = 1; // 버티클 개수
     private static final String BROADCAST_MESSAGE_ADDRESS = "broadcast.message.address";
 
@@ -712,7 +714,9 @@ public class MetaverseServer extends AbstractVerticle {
 
     private static VertxOptions configureVertxOptions() {
         Config hazelcastConfig = new Config();
-        hazelcastConfig.setClusterName("my-cluster-wow");
+        hazelcastConfig.setClusterName("metaverse-move-main");
+
+//        hazelcastConfig.setClusterName("my-cluster-wow");
 //        hazelcastConfig.setCPSubsystemConfig(new CPSubsystemConfig().setCPMemberCount(3)); // 여기 주석을 쳐야
         ClusterManager mgr = new HazelcastClusterManager(hazelcastConfig);
         return new VertxOptions().setClusterManager(mgr);
